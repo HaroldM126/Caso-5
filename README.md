@@ -14,7 +14,7 @@ Sistema de gestión de billetera digital que permite a los usuarios administrar 
 
 ## Instalación
 
-````bash
+```bash
 npm install
 
 ## Ejecutar el proyecto
