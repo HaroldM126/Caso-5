@@ -19,6 +19,9 @@ export class User {
   @Column()
   password_hash: string;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  saldo: number;
+
   @Column({
     type: 'enum',
     enum: Role,
