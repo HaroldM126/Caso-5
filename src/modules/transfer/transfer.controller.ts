@@ -11,7 +11,7 @@ export class TransferController {
   @Post()
   async transfer(@Request() req: any, @Body() transferDto: TransferDto) {
     // req.user viene del jwt-auth.guard (jwt.strategy.ts validate() return)
-    const fromId = req.user.sub;
+    const fromId = req.user.id;
     return this.transferService.transfer(fromId, transferDto.toAccountId, transferDto.amount);
   }
 }

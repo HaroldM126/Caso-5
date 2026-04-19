@@ -10,7 +10,8 @@ import { User } from '../../entities/user/user.entity';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private configService: ConfigService,
-    @InjectRepository(User) private userRepository: Repository<User>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -20,11 +21,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    const user = await this.userRepository.findOne({ where: { id: payload.sub } });
+    const { sub: id } = payload;
+    const user = await this.userRepository.findOne({ where: { id } });
+
     if (!user) {
-      throw new UnauthorizedException('Token inválido o usuario no existe');
+      throw new UnauthorizedException('Usuario no encontrado');
     }
-    // Retornamos todo el payload, en req.user estará disponible el sub (ID), email y role
-    return { sub: payload.sub, email: payload.email, role: payload.role };
+
+    return user;
   }
 }
