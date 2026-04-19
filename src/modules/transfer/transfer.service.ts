@@ -11,41 +11,52 @@ export class TransferService {
       throw new BadRequestException('No puedes transferirte a ti mismo.');
     }
 
+    const exactAmount = Number(amount);
+    if (isNaN(exactAmount) || exactAmount <= 0) {
+      throw new BadRequestException('El monto debe ser un número positivo.');
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
 
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 1. Validar origen
-      const fromUser = await queryRunner.manager.findOne(User, {
-        where: { id: fromId },
+      // Para evitar deadlocks, bloqueamos las cuentas en orden ascendente de ID
+      const [firstId, secondId] = [fromId, toId].sort((a, b) => a - b);
+
+      // Precargar usuarios en el orden correcto
+      let fromUser: User;
+      let toUser: User;
+
+      // Bloqueo 1
+      const user1 = await queryRunner.manager.findOne(User, {
+        where: { id: firstId },
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (!fromUser) {
-        throw new BadRequestException('Usuario de origen no encontrado.');
+      // Bloqueo 2
+      const user2 = await queryRunner.manager.findOne(User, {
+        where: { id: secondId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!user1 || !user2) {
+        throw new BadRequestException('Una o ambas cuentas no existen.');
       }
 
-      const exactAmount = Number(amount);
+      // Asignar roles después de bloquear
+      fromUser = user1.id === fromId ? user1 : user2;
+      toUser = user1.id === toId ? user1 : user2;
+
       const fromUserSaldo = Number(fromUser.saldo);
 
-      // 2. Validar fondos suficientes
+      // Validar fondos suficientes
       if (fromUserSaldo < exactAmount) {
         throw new BadRequestException('Fondos insuficientes.');
       }
 
-      // 3. Validar destino
-      const toUser = await queryRunner.manager.findOne(User, {
-        where: { id: toId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!toUser) {
-        throw new BadRequestException('Usuario de destino no encontrado.');
-      }
-
-      // 4. Actualizar saldos
+      // Actualizar saldos con precisión decimal
       fromUser.saldo = Number((fromUserSaldo - exactAmount).toFixed(2));
       toUser.saldo = Number((Number(toUser.saldo) + exactAmount).toFixed(2));
 
@@ -66,7 +77,7 @@ export class TransferService {
       if (err instanceof BadRequestException) {
         throw err;
       }
-      throw new InternalServerErrorException('Fallo la transferencia.');
+      throw new InternalServerErrorException('Fallo la transferencia: ' + err.message);
     } finally {
       await queryRunner.release();
     }
