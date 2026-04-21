@@ -6,6 +6,8 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './modules/auth/auth.module';
 import { TransferModule } from './modules/transfer/transfer.module';
 import { UserModule } from './modules/user/user.module';
+import { AccountModule } from './modules/account/account.module';
+
 
 @Module({
   imports: [
@@ -18,7 +20,8 @@ import { UserModule } from './modules/user/user.module';
 
     AuthModule,
     TransferModule,
-    UserModule
+    UserModule,
+    AccountModule
   ],
   controllers: [AppController],
   providers: [AppService],
