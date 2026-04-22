@@ -9,11 +9,12 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../../entities/user/user.entity';
 
 @Controller('transfer')
-@UseGuards(JwtAuthGuard) // Solo autorizados por defecto
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class TransferController {
   constructor(private readonly transferService: TransferService) {}
 
   @Post()
+  @Roles(Role.USER)
   async transfer(@Request() req: any, @Body() transferDto: TransferDto) {
     // req.user viene del jwt-auth.guard (jwt.strategy.ts validate() return)
     const fromId = req.user.id;
@@ -22,7 +23,6 @@ export class TransferController {
 
   // Depósito: SOLO ADMIN
   @Post('deposit')
-  @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   async deposit(@Body() depositDto: DepositDto) {
     return this.transferService.deposit(depositDto.toAccountId, depositDto.amount);
@@ -30,7 +30,6 @@ export class TransferController {
 
   // Retiro: SOLO USUARIO (solo puede retirar de su propia cuenta)
   @Post('withdraw')
-  @UseGuards(RolesGuard)
   @Roles(Role.USER)
   async withdraw(@Request() req: any, @Body() withdrawDto: WithdrawDto) {
     const userId = req.user.id;

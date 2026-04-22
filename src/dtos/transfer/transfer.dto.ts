@@ -1,4 +1,5 @@
-import { IsInt, IsNotEmpty, IsPositive, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsPositive } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class TransferDto {
   @IsNotEmpty()
@@ -7,5 +8,6 @@ export class TransferDto {
 
   @IsNotEmpty()
   @IsPositive()
+  @Type(() => Number)
   amount: number;
 }

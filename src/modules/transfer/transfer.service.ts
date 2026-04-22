@@ -1,8 +1,8 @@
-// Servicio para manejar transferencias entre cuentas
 import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Account } from '../../entities/account/account.entity';
 import { AccountsService } from '../account/accounts.service';
+import { Transaction, TransactionType } from '../../entities/transfer/transaction.entity';
 
 @Injectable()
 export class TransferService {
@@ -68,6 +68,14 @@ export class TransferService {
       await queryRunner.manager.save(Account, sourceAcc);
       await queryRunner.manager.save(Account, destAcc);
 
+      const transaction = queryRunner.manager.create(Transaction, {
+        type: TransactionType.TRANSFER,
+        amount: exactAmount,
+        fromAccount: sourceAcc,
+        toAccount: destAcc,
+      });
+      await queryRunner.manager.save(Transaction, transaction);
+
       await queryRunner.commitTransaction();
 
       return {
@@ -95,17 +103,48 @@ export class TransferService {
       throw new BadRequestException('El monto debe ser un número positivo.');
     }
 
-    // Obtener saldo actual
-    const account = await this.accountsService.findByAccountId(toAccountId);
-    const newBalance = Number((Number(account.saldo) + exactAmount).toFixed(2));
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    await this.accountsService.updateSaldo(toAccountId, newBalance);
+    try {
+      const account = await queryRunner.manager.findOne(Account, {
+        where: { id: toAccountId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
-    return {
-      message: 'Depósito exitoso',
-      accountId: toAccountId,
-      saldo: newBalance,
-    };
+      if (!account) {
+        throw new BadRequestException('Cuenta destino no encontrada.');
+      }
+
+      const newBalance = Number((Number(account.saldo) + exactAmount).toFixed(2));
+      account.saldo = newBalance;
+
+      await queryRunner.manager.save(Account, account);
+
+      const transaction = queryRunner.manager.create(Transaction, {
+        type: TransactionType.DEPOSIT,
+        amount: exactAmount,
+        toAccount: account,
+      });
+      await queryRunner.manager.save(Transaction, transaction);
+
+      await queryRunner.commitTransaction();
+
+      return {
+        message: 'Depósito exitoso',
+        accountId: account.id,
+        saldo: newBalance,
+      };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new InternalServerErrorException('Fallo el depósito: ' + err.message);
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // Retiro: role USER (controlado en el controller via @Roles)
@@ -115,21 +154,55 @@ export class TransferService {
       throw new BadRequestException('El monto debe ser un número positivo.');
     }
 
-    // Obtener cuenta del usuario
-    const account = await this.accountsService.findByUserId(userId);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const current = Number(account.saldo);
-    if (current < exactAmount) {
-      throw new BadRequestException('Fondos insuficientes.');
+    try {
+      // Obtenemos la cuenta base desde userId para tener el id
+      const userAccount = await this.accountsService.findAccountByUserId(userId);
+      
+      const account = await queryRunner.manager.findOne(Account, {
+        where: { id: userAccount.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!account) {
+        throw new BadRequestException('Cuenta no encontrada.');
+      }
+
+      const current = Number(account.saldo);
+      if (current < exactAmount) {
+        throw new BadRequestException('Fondos insuficientes.');
+      }
+
+      const newBalance = Number((current - exactAmount).toFixed(2));
+      account.saldo = newBalance;
+
+      await queryRunner.manager.save(Account, account);
+
+      const transaction = queryRunner.manager.create(Transaction, {
+        type: TransactionType.WITHDRAW,
+        amount: exactAmount,
+        fromAccount: account,
+      });
+      await queryRunner.manager.save(Transaction, transaction);
+
+      await queryRunner.commitTransaction();
+
+      return {
+        message: 'Retiro exitoso',
+        accountId: account.id,
+        saldo: newBalance,
+      };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new InternalServerErrorException('Fallo el retiro: ' + err.message);
+    } finally {
+      await queryRunner.release();
     }
-
-    const newBalance = Number((current - exactAmount).toFixed(2));
-    await this.accountsService.updateSaldo(account.id, newBalance);
-
-    return {
-      message: 'Retiro exitoso',
-      accountId: account.id,
-      saldo: newBalance,
-    };
   }
 }
