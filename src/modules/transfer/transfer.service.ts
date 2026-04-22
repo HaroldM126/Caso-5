@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { User } from '../../entities/user/user.entity';
+import { AccountsService } from '../account/accounts.service';
 
 @Injectable()
 export class TransferService {
-  constructor(private dataSource: DataSource) {}
+  constructor(
+    private dataSource: DataSource,
+    private readonly accountsService: AccountsService,
+  ) {}
 
   async transfer(fromId: number, toId: number, amount: number) {
     if (fromId === toId) {
@@ -81,5 +85,50 @@ export class TransferService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // Depósito: solo ADMIN (controlado en el controller via @Roles)
+  async deposit(toAccountId: number, amount: number) {
+    const exactAmount = Number(amount);
+    if (isNaN(exactAmount) || exactAmount <= 0) {
+      throw new BadRequestException('El monto debe ser un número positivo.');
+    }
+
+    // Obtener saldo actual
+    const account = await this.accountsService.findByAccountId(toAccountId);
+    const newBalance = Number((Number(account.saldo) + exactAmount).toFixed(2));
+
+    await this.accountsService.updateSaldo(toAccountId, newBalance);
+
+    return {
+      message: 'Depósito exitoso',
+      accountId: toAccountId,
+      saldo: newBalance,
+    };
+  }
+
+  // Retiro: role USER (controlado en el controller via @Roles)
+  async withdraw(userId: number, amount: number) {
+    const exactAmount = Number(amount);
+    if (isNaN(exactAmount) || exactAmount <= 0) {
+      throw new BadRequestException('El monto debe ser un número positivo.');
+    }
+
+    // Obtener cuenta del usuario
+    const account = await this.accountsService.findByUserId(userId);
+
+    const current = Number(account.saldo);
+    if (current < exactAmount) {
+      throw new BadRequestException('Fondos insuficientes.');
+    }
+
+    const newBalance = Number((current - exactAmount).toFixed(2));
+    await this.accountsService.updateSaldo(account.id, newBalance);
+
+    return {
+      message: 'Retiro exitoso',
+      accountId: account.id,
+      saldo: newBalance,
+    };
   }
 }
