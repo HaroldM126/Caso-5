@@ -1,9 +1,13 @@
-import {Controller, Get,Param,ParseIntPipe, Req} from '@nestjs/common';
+import {Controller, Get,Param,ParseIntPipe, Req, UseGuards} from '@nestjs/common';
 import { ApiBearerAuth,ApiOperation,ApiParam,ApiResponse,ApiTags,} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AccountsService }    from './accounts.service';
 import { AccountResponseDto } from '../../dtos/account/account_res.dto';
 import { AccountSaldoDto }  from '../../dtos/account/account_sal.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../../entities/user/user.entity';
 
 interface RequestWithUser extends Request {
   user: {
@@ -16,6 +20,7 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Accounts')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('accounts')
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
@@ -51,6 +56,7 @@ export class AccountsController {
   
 
   @Get()
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary:     'Listar todas las cuentas',
     description: 'Retorna el listado completo de cuentas. Uso administrativo.',

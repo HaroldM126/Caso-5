@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { TransferModule } from './modules/transfer/transfer.module';
 import { UserModule } from './modules/user/user.module';
 import { AccountModule } from './modules/account/account.module';
+import { TransactionModule } from './modules/transaction/transaction.module';
 
 
 @Module({
@@ -21,7 +22,8 @@ import { AccountModule } from './modules/account/account.module';
     AuthModule,
     TransferModule,
     UserModule,
-    AccountModule
+    AccountModule,
+    TransactionModule
   ],
   controllers: [AppController],
   providers: [AppService],

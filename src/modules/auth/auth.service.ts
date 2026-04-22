@@ -1,9 +1,10 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { User, Role } from '../../entities/user/user.entity';
+import { Account } from '../../entities/account/account.entity';
 import { RegisterDto } from '../../dtos/auth/register.dto';
 import { LoginDto } from '../../dtos/auth/login.dto';
 
@@ -13,6 +14,7 @@ export class AuthService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private jwtService: JwtService,
+    private dataSource: DataSource,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -26,24 +28,44 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    const newUser = this.userRepository.create({
-      nombre,
-      email,
-      password_hash,
-      role: Role.USER,
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    await this.userRepository.save(newUser);
+    try {
+      const newUser = queryRunner.manager.create(User, {
+        nombre,
+        email,
+        password_hash,
+        role: Role.USER,
+      });
 
-    // No retornar el password_hash
-    const { password_hash: _, ...userWithoutPassword } = newUser;
+      const savedUser = await queryRunner.manager.save(newUser);
 
-    const payload = { sub: newUser.id, email: newUser.email, role: newUser.role };
-    
-    return {
-      user: userWithoutPassword,
-      access_token: await this.jwtService.signAsync(payload),
-    };
+      const newAccount = queryRunner.manager.create(Account, {
+        user: savedUser,
+        saldo: 0,
+      });
+
+      await queryRunner.manager.save(newAccount);
+
+      await queryRunner.commitTransaction();
+
+      // No retornar el password_hash
+      const { password_hash: _, ...userWithoutPassword } = savedUser;
+
+      const payload = { sub: savedUser.id, email: savedUser.email, role: savedUser.role };
+      
+      return {
+        user: userWithoutPassword,
+        access_token: await this.jwtService.signAsync(payload),
+      };
+    } catch (error: any) {
+      await queryRunner.rollbackTransaction();
+      throw new BadRequestException('Error al registrar usuario: ' + error.message);
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async login(loginDto: LoginDto) {
