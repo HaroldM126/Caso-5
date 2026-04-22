@@ -1,6 +1,7 @@
+// Servicio para manejar transferencias entre cuentas
 import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { User } from '../../entities/user/user.entity';
+import { Account } from '../../entities/account/account.entity';
 import { AccountsService } from '../account/accounts.service';
 
 @Injectable()
@@ -26,57 +27,57 @@ export class TransferService {
     await queryRunner.startTransaction();
 
     try {
-      // Para evitar deadlocks, bloqueamos las cuentas en orden ascendente de ID
-      const [firstId, secondId] = [fromId, toId].sort((a, b) => a - b);
+      // Obtener las cuentas involucradas
+      const fromAccount = await this.accountsService.findAccountByUserId(fromId);
+      const toAccount = await this.accountsService.findAccountById(toId);
 
-      // Precargar usuarios en el orden correcto
-      let fromUser: User;
-      let toUser: User;
+      // Para evitar deadlocks, bloqueamos las cuentas en orden ascendente de ID
+      const [firstId, secondId] = [fromAccount.id, toAccount.id].sort((a, b) => a - b);
 
       // Bloqueo 1
-      const user1 = await queryRunner.manager.findOne(User, {
+      const acc1 = await queryRunner.manager.findOne(Account, {
         where: { id: firstId },
         lock: { mode: 'pessimistic_write' },
       });
 
       // Bloqueo 2
-      const user2 = await queryRunner.manager.findOne(User, {
+      const acc2 = await queryRunner.manager.findOne(Account, {
         where: { id: secondId },
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (!user1 || !user2) {
+      if (!acc1 || !acc2) {
         throw new BadRequestException('Una o ambas cuentas no existen.');
       }
 
       // Asignar roles después de bloquear
-      fromUser = user1.id === fromId ? user1 : user2;
-      toUser = user1.id === toId ? user1 : user2;
+      const sourceAcc = acc1.id === fromAccount.id ? acc1 : acc2;
+      const destAcc = acc1.id === toAccount.id ? acc1 : acc2;
 
-      const fromUserSaldo = Number(fromUser.saldo);
+      const fromSaldo = Number(sourceAcc.saldo);
 
       // Validar fondos suficientes
-      if (fromUserSaldo < exactAmount) {
+      if (fromSaldo < exactAmount) {
         throw new BadRequestException('Fondos insuficientes.');
       }
 
       // Actualizar saldos con precisión decimal
-      fromUser.saldo = Number((fromUserSaldo - exactAmount).toFixed(2));
-      toUser.saldo = Number((Number(toUser.saldo) + exactAmount).toFixed(2));
+      sourceAcc.saldo = Number((fromSaldo - exactAmount).toFixed(2));
+      destAcc.saldo = Number((Number(destAcc.saldo) + exactAmount).toFixed(2));
 
-      await queryRunner.manager.save(User, fromUser);
-      await queryRunner.manager.save(User, toUser);
+      await queryRunner.manager.save(Account, sourceAcc);
+      await queryRunner.manager.save(Account, destAcc);
 
       await queryRunner.commitTransaction();
 
       return {
         message: 'Transferencia exitosa',
-        fromUser: {
-          id: fromUser.id,
-          saldo: fromUser.saldo,
+        fromAccount: {
+          id: sourceAcc.id,
+          saldo: sourceAcc.saldo,
         },
       };
-    } catch (err) {
+    } catch (err: any) {
       await queryRunner.rollbackTransaction();
       if (err instanceof BadRequestException) {
         throw err;
