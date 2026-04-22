@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn,OneToOne, } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToOne } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Account } from '../account/account.entity';
 
@@ -21,9 +21,6 @@ export class User {
   @Column()
   password_hash: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  saldo: number;
-
   @Column({
     type: 'enum',
     enum: Role,
@@ -37,7 +34,6 @@ export class User {
   @UpdateDateColumn()
   updated_at: Date;
 
-@OneToOne(() => Account, (account) => account.user)
-account: Account;
-
+  @OneToOne(() => Account, (account) => account.user)
+  account: Account;
 }

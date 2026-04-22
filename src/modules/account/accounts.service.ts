@@ -32,7 +32,7 @@ export class AccountsService {
 
     
 
-  private async findAccountByUserId(userId: number): Promise<Account> {
+  public async findAccountByUserId(userId: number): Promise<Account> {
     const account = await this.accountRepository.findOne({
       where: { user: { id: userId } },
     });
@@ -44,7 +44,7 @@ export class AccountsService {
     return account;
   }
 
-  private async findAccountById(accountId: number): Promise<Account> {
+  public async findAccountById(accountId: number): Promise<Account> {
     const account = await this.accountRepository.findOne({
       where: { id: accountId },
       relations: ['user'],
