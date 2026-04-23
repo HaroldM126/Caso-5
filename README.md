@@ -1,3 +1,12 @@
+## Integrantes
+
+- Harold Jessid Andrade Meneses
+- Belladira Oliveira Ramirez
+- Maria del carmen Guerra Ruiz
+- Vanya Catalina Portilla Sánchez
+- Niyireth Fernanda Ruiz Solarte
+- Andrés Alirio Burbano
+
 # PayFlow - Wallet Digital
 
 Sistema de gestión de billetera digital que permite a los usuarios administrar su dinero, realizar transacciones y consultar su historial.
@@ -29,3 +38,4 @@ npm run start:dev
 - Gestión de cuentas
 - Transacciones (depósito, retiro, transferencia)
 ````
+
