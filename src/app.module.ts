@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -8,7 +9,6 @@ import { TransferModule } from './modules/transfer/transfer.module';
 import { UserModule } from './modules/user/user.module';
 import { AccountModule } from './modules/account/account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
-
 
 @Module({
   imports: [
@@ -23,7 +23,8 @@ import { TransactionModule } from './modules/transaction/transaction.module';
     TransferModule,
     UserModule,
     AccountModule,
-    TransactionModule
+    TransactionModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

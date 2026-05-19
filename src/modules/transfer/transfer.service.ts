@@ -1,14 +1,23 @@
-import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  Injectable,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Account } from '../../entities/account/account.entity';
 import { AccountsService } from '../account/accounts.service';
-import { Transaction, TransactionType } from '../../entities/transfer/transaction.entity';
+import {
+  Transaction,
+  TransactionType,
+} from '../../entities/transfer/transaction.entity';
 
 @Injectable()
 export class TransferService {
   constructor(
     private dataSource: DataSource,
     private readonly accountsService: AccountsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async transfer(fromId: number, toId: number, amount: number) {
@@ -28,11 +37,14 @@ export class TransferService {
 
     try {
       // Obtener las cuentas involucradas
-      const fromAccount = await this.accountsService.findAccountByUserId(fromId);
+      const fromAccount =
+        await this.accountsService.findAccountByUserId(fromId);
       const toAccount = await this.accountsService.findAccountById(toId);
 
       // Para evitar deadlocks, bloqueamos las cuentas en orden ascendente de ID
-      const [firstId, secondId] = [fromAccount.id, toAccount.id].sort((a, b) => a - b);
+      const [firstId, secondId] = [fromAccount.id, toAccount.id].sort(
+        (a, b) => a - b,
+      );
 
       // Bloqueo 1
       const acc1 = await queryRunner.manager.findOne(Account, {
@@ -78,6 +90,17 @@ export class TransferService {
 
       await queryRunner.commitTransaction();
 
+      // se modificopara llamar la notificacion (notificación en tiempo real)
+      this.notificationsService.sendTransferNotification({
+        fromUserId: fromId,
+        toUserId: toId,
+        amount: exactAmount,
+        transactionId: transaction.id,
+        newBalanceFrom: sourceAcc.saldo,
+        newBalanceTo: destAcc.saldo,
+        timestamp: new Date(),
+      });
+
       return {
         message: 'Transferencia exitosa',
         fromAccount: {
@@ -90,7 +113,9 @@ export class TransferService {
       if (err instanceof BadRequestException) {
         throw err;
       }
-      throw new InternalServerErrorException('Fallo la transferencia: ' + err.message);
+      throw new InternalServerErrorException(
+        'Fallo la transferencia: ' + err.message,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -117,7 +142,9 @@ export class TransferService {
         throw new BadRequestException('Cuenta destino no encontrada.');
       }
 
-      const newBalance = Number((Number(account.saldo) + exactAmount).toFixed(2));
+      const newBalance = Number(
+        (Number(account.saldo) + exactAmount).toFixed(2),
+      );
       account.saldo = newBalance;
 
       await queryRunner.manager.save(Account, account);
@@ -141,7 +168,9 @@ export class TransferService {
       if (err instanceof BadRequestException) {
         throw err;
       }
-      throw new InternalServerErrorException('Fallo el depósito: ' + err.message);
+      throw new InternalServerErrorException(
+        'Fallo el depósito: ' + err.message,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -160,8 +189,9 @@ export class TransferService {
 
     try {
       // Obtenemos la cuenta base desde userId para tener el id
-      const userAccount = await this.accountsService.findAccountByUserId(userId);
-      
+      const userAccount =
+        await this.accountsService.findAccountByUserId(userId);
+
       const account = await queryRunner.manager.findOne(Account, {
         where: { id: userAccount.id },
         lock: { mode: 'pessimistic_write' },
