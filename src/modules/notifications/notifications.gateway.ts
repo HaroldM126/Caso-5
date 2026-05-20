@@ -71,56 +71,21 @@ export class NotificationsGateway
       if (disconnectCount > 0) {
         this.logger.log(`⏰ Se desconectaron proactivamente ${disconnectCount} sockets con tokens JWT expirados.`);
       }
-    } catch (error: any) {
-      this.logger.error('Error al realizar el chequeo de tokens expirados', error);
-    }
-  }
 
-  handleConnection(client: Socket) {
-    try {
-      this.logger.debug('SOCKET CONNECTED');
-      this.logger.debug('handshake.auth: ' + JSON.stringify(client.handshake.auth));
-
-      const token =
-        client.handshake.auth?.token ||
-        client.handshake.query?.token ||
-        this.extractTokenFromSocket(client);
-
-      if (!token) {
-        this.logger.warn(`Conexión sin token. Socket: ${client.id}`);
-        client.emit('connection_error', { message: 'Auth token missing' });
+      if (!userId) {
+        this.logger.warn(`Conexión sin userId tras verificación. Socket: ${client.id}`);
         client.disconnect(true);
         return;
       }
 
-      const jwtSecret = this.configService.get<string>('JWT_SECRET');
-      const decoded = this.jwtService.verify(token, { secret: jwtSecret });
-
-      client.data.user = decoded;
-      client.data.userId = decoded.sub;
-      client.data.email = decoded.email;
-
-      const userId = client.data.userId as number;
-      const email = client.data.email as string;
-
-      // registrar usuario conectado
       this.connectedUsersService.registerConnection(
         userId,
         client.id,
         email || 'unknown',
       );
 
-      this.logger.log(`REGISTERED USER: ${userId} socket: ${client.id}`);
-
-      // evento de confirmación
-      client.emit('connection_established', {
-        ok: true,
-        userId,
-        socketId: client.id,
-      });
-
       this.logger.log(
-        `🔌 Usuario conectado: ${email} (${userId}) - Socket: ${client.id}`,
+        `Conexión exitosa - Usuario: ${email} (ID: ${userId}), Socket: ${client.id}`,
       );
     } catch (error) {
       this.logger.error('Error en handleConnection', error);
