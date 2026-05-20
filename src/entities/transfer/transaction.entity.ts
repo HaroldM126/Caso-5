@@ -9,8 +9,10 @@ export enum TransactionType {
 }
 
 export enum TransactionStatus {
+  PENDING = 'PENDING',
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
+  REVERSED = 'REVERSED',
 }
 
 @Entity('transactions')
@@ -39,7 +41,7 @@ export class Transaction {
 
 
   @ApiProperty({ enum: TransactionStatus })
-  @Column({ type: 'enum', enum: TransactionStatus, default: TransactionStatus.SUCCESS })
+  @Column({ type: 'enum', enum: TransactionStatus, default: TransactionStatus.PENDING })
   status: TransactionStatus;
 
   @ApiProperty()
