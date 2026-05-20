@@ -40,11 +40,3 @@ npm run start:dev
 - Gestión de cuentas
 - Transacciones (depósito, retiro, transferencia)
 
-## Integrantes
-
-- Harold Jessid Andrade Meneses
-- Belladira Oliveira Ramirez
-- Maria del carmen Guerra Ruiz
-- Vanya Catalina Portilla Sánchez
-- Niyireth Fernanda Ruiz Solarte
-- Andrés Alirio Burbano
