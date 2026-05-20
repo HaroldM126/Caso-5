@@ -1,13 +1,7 @@
-import {
-  Entity,
-  Column,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToOne,
-} from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToOne, OneToMany } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Account } from '../account/account.entity';
+import { Notification } from '../notification/notification.entity';
 
 export enum Role {
   ADMIN = 'ADMIN',
@@ -43,4 +37,7 @@ export class User {
 
   @OneToOne(() => Account, (account) => account.user)
   account: Account;
+
+  @OneToMany(() => Notification, (notification) => notification.user)
+  notifications: Notification[];
 }

@@ -5,6 +5,7 @@ import {
   ParseIntPipe,
   Req,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -108,7 +109,11 @@ export class AccountsController {
   @ApiResponse({ status: 404, description: 'Cuenta no encontrada' })
   findByUserId(
     @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: RequestWithUser,
   ): Promise<AccountResponseDto> {
+    if (req.user.role !== Role.ADMIN && req.user.id !== userId) {
+      throw new ForbiddenException('No tienes permiso para consultar esta cuenta.');
+    }
     return this.accountsService.findByUserId(userId);
   }
 }

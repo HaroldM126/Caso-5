@@ -19,6 +19,7 @@ export enum TransactionStatus {
   PENDING = 'PENDING',
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
+  REVERSED = 'REVERSED',
 }
 
 @Entity('transactions')
