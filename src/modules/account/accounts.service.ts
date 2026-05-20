@@ -34,6 +34,7 @@ export class AccountsService {
   public async findAccountByUserId(userId: number): Promise<Account> {
     const account = await this.accountRepository.findOne({
       where: { user: { id: userId } },
+      relations: ['user'],
     });
 
     if (!account) {
