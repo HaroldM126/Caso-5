@@ -1,7 +1,8 @@
 import {WebSocketGateway,WebSocketServer,OnGatewayConnection,OnGatewayDisconnect,SubscribeMessage,} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards, Inject } from '@nestjs/common';
-import { WsJwtGuard } from './ws-jwt.guard';
+import { Logger, Inject } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { ConnectedUsersService } from './connected-users.service';
 
 
@@ -12,8 +13,6 @@ import { ConnectedUsersService } from './connected-users.service';
   },
   namespace: '/notifications',
 })
-
-@UseGuards(WsJwtGuard)
 export class NotificationsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -25,51 +24,79 @@ export class NotificationsGateway
   constructor(
     @Inject(ConnectedUsersService)
     private readonly connectedUsersService: ConnectedUsersService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
 
 
-  handleConnection(client: Socket) {
-    try {
-      // Extraer datos del usuario validado por WsJwtGuard
-      const userId = client.data.userId;
-      const email = client.data.email;
+handleConnection(client: Socket) {
+  try {
+    this.logger.debug('SOCKET CONNECTED');
+    this.logger.debug('handshake.auth: ' + JSON.stringify(client.handshake.auth));
 
-      if (!userId) {
-        this.logger.warn(
-          ` Conexión sin userId detectada. Socket: ${client.id}`,
-        );
-        client.disconnect(true);
-        return;
-      }
+    const token =
+      client.handshake.auth?.token ||
+      client.handshake.query?.token ||
+      this.extractTokenFromSocket(client);
 
-      
-      this.connectedUsersService.registerConnection(
-        userId,
-        client.id,
-        email || 'unknown',
-      );
-
-      
-      client.emit('connection_established', {
-        message: 'Conexión establecida con éxito',
-        userId,
-        connectedAt: new Date(),
-        socketId: client.id,
-      });
-
-           
-      this.logger.log(
-        `🔌 Conexión exitosa - Usuario: ${email} (ID: ${userId}), Socket: ${client.id}`,
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Error desconocido';
-      this.logger.error(
-        `Error en handleConnection: ${errorMessage}`,
-        error,
-      );
+    if (!token) {
+      this.logger.warn(`Conexión sin token. Socket: ${client.id}`);
+      client.emit('connection_error', { message: 'Auth token missing' });
       client.disconnect(true);
+      return;
     }
+
+    const jwtSecret = this.configService.get<string>('JWT_SECRET');
+    const decoded = this.jwtService.verify(token, { secret: jwtSecret });
+
+    client.data.user = decoded;
+    client.data.userId = decoded.sub;
+    client.data.email = decoded.email;
+
+    const userId = client.data.userId as number;
+    const email = client.data.email as string;
+
+    // registrar usuario conectado
+    this.connectedUsersService.registerConnection(
+      userId,
+      client.id,
+      email || 'unknown',
+    );
+
+    this.logger.log(`REGISTERED USER: ${userId} socket: ${client.id}`);
+
+    // evento de confirmación
+    client.emit('connection_established', {
+      ok: true,
+      userId,
+      socketId: client.id,
+    });
+
+    this.logger.log(
+      `🔌 Usuario conectado: ${email} (${userId}) - Socket: ${client.id}`,
+    );
+  } catch (error) {
+    this.logger.error('Error en handleConnection', error);
+    client.emit('connection_error', { message: 'Auth error' });
+    client.disconnect(true);
+  }
+}
+
+  private extractTokenFromSocket(client: Socket): string | undefined {
+    const authHeader = client.handshake.headers?.authorization as
+      | string
+      | undefined;
+
+    if (!authHeader) {
+      return undefined;
+    }
+
+    const parts = authHeader.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer') {
+      return parts[1];
+    }
+
+    return undefined;
   }
 
   
@@ -228,20 +255,24 @@ export class NotificationsGateway
   }
 
  
-  sendNotificationToUser(userId: number, eventName: string, data: any) {
-    const socketId = this.connectedUsersService.getSocketId(userId);
+   sendNotificationToUser(
+  userId: number,
+  eventName: string,
+  data: any,
+) {
+  const socketId =
+    this.connectedUsersService.getSocketId(userId);
 
-    if (socketId) {
-      this.server.to(socketId).emit(eventName, data);
-      this.logger.log(
-        `📨 Notificación '${eventName}' enviada al usuario ${userId}`,
-      );
-    } else {
-      this.logger.warn(
-        `⚠️ Usuario ${userId} no está conectado para recibir la notificación '${eventName}'`,
-      );
-    }
+    this.logger.debug('SEND WS EVENT: ' + JSON.stringify({ userId, socketId, eventName }));
+
+  if (socketId) {
+    this.server.to(socketId).emit(eventName, data);
+
+    this.logger.log(`EVENT SENT TO SOCKET: ${socketId}`);
+  } else {
+    this.logger.warn(`USER NOT CONNECTED: ${userId}`);
   }
+}
 
   
   isUserConnected(userId: number): boolean {
