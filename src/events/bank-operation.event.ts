@@ -14,5 +14,10 @@ export interface BankOperationEvent {
   initiatedById?: number;
   message: string;
   occurredAt: string;
+  senderEmail?: string;
+  receiverEmail?: string;
+  senderBalance?: number;
+  receiverBalance?: number;
+  toUserId?: number;
   details?: Record<string, any>;
 }

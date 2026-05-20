@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, InternalServerErrorException, ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Account } from '../../entities/account/account.entity';
@@ -42,15 +42,21 @@ export class TransferService {
       fromAccount = await this.accountsService.findAccountByUserId(fromId);
       toAccount = await this.accountsService.findAccountById(toId);
 
+      if (!fromAccount.user || fromAccount.user.id !== fromId) {
+        throw new ForbiddenException('No tiene permiso sobre la cuenta origen.');
+      }
+
       const [firstId, secondId] = [fromAccount.id, toAccount.id].sort((a, b) => a - b);
 
       const acc1 = await queryRunner.manager.findOne(Account, {
         where: { id: firstId },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
       const acc2 = await queryRunner.manager.findOne(Account, {
         where: { id: secondId },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -93,6 +99,11 @@ export class TransferService {
         toAccountId: destAcc.id,
         transactionId,
         initiatedById: fromId,
+        senderEmail: fromAccount.user?.email,
+        receiverEmail: toAccount.user?.email,
+        senderBalance: sourceAcc.saldo,
+        receiverBalance: destAcc.saldo,
+        toUserId: toAccount.user?.id,
         message: `Transferencia exitosa de ${exactAmount} de la cuenta ${sourceAcc.id} a la cuenta ${destAcc.id}`,
         occurredAt: new Date().toISOString(),
         details: { sourceAccountId: sourceAcc.id, targetAccountId: destAcc.id },
@@ -118,16 +129,19 @@ export class TransferService {
           toAccountId: toAccount?.id,
           transactionId,
           initiatedById: fromId,
+          senderEmail: fromAccount.user?.email,
+          receiverEmail: toAccount?.user?.email,
+          toUserId: toAccount?.user?.id,
           message: `Transferencia fallida: ${err.message}`,
           occurredAt: new Date().toISOString(),
           details: { reason: err.message },
         });
       }
 
-      if (err instanceof BadRequestException) {
+      if (err instanceof BadRequestException || err instanceof ForbiddenException) {
         throw err;
       }
-      throw new InternalServerErrorException('Fallo la transferencia: ' + err.message);
+      throw new InternalServerErrorException('Error interno al procesar la transferencia.');
     } finally {
       await queryRunner.release();
     }
@@ -179,6 +193,11 @@ export class TransferService {
         toAccountId: account.id,
         transactionId: savedTransaction.id,
         initiatedById: account.user.id,
+        senderEmail: account.user.email,
+        receiverEmail: account.user.email,
+        senderBalance: account.saldo,
+        receiverBalance: account.saldo,
+        toUserId: account.user.id,
         message: `Depósito exitoso de ${exactAmount} en la cuenta ${account.id}`,
         occurredAt: new Date().toISOString(),
         details: { targetAccountId: account.id, targetUserId: account.user.id },
@@ -199,6 +218,9 @@ export class TransferService {
           operationStatus: OperationStatus.FAILED,
           amount: exactAmount,
           toAccountId: account.id,
+          senderEmail: account.user.email,
+          receiverEmail: account.user.email,
+          toUserId: account.user.id,
           message: `Depósito fallido: ${err.message}`,
           occurredAt: new Date().toISOString(),
           details: { reason: err.message },
@@ -208,7 +230,7 @@ export class TransferService {
       if (err instanceof BadRequestException) {
         throw err;
       }
-      throw new InternalServerErrorException('Fallo el depósito: ' + err.message);
+      throw new InternalServerErrorException('Error interno al procesar el depósito.');
     } finally {
       await queryRunner.release();
     }
@@ -231,6 +253,7 @@ export class TransferService {
 
       account = await queryRunner.manager.findOne(Account, {
         where: { id: userAccount.id },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -266,6 +289,11 @@ export class TransferService {
         fromAccountId: account.id,
         transactionId: savedTransaction.id,
         initiatedById: userId,
+        senderEmail: account.user.email,
+        receiverEmail: account.user.email,
+        senderBalance: account.saldo,
+        receiverBalance: account.saldo,
+        toUserId: userId,
         message: `Retiro exitoso de ${exactAmount} de la cuenta ${account.id}`,
         occurredAt: new Date().toISOString(),
         details: { sourceAccountId: account.id },

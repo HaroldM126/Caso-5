@@ -10,7 +10,7 @@ import { UserModule } from './modules/user/user.module';
 import { AccountModule } from './modules/account/account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -27,6 +27,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     AccountModule,
     TransactionModule,
     NotificationsModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

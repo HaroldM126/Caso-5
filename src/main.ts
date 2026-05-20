@@ -29,7 +29,9 @@ async function bootstrap() {
   await app.listen(port);
 
   console.log(`🚀 Server running on http://localhost:${port}/api`);
-  console.log(`📖 Documentation available on http://localhost:${port}/api/docs`);
+  console.log(
+    `📖 Documentation available on http://localhost:${port}/api/docs`,
+  );
 }
 
 bootstrap();
