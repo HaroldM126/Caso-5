@@ -4,6 +4,7 @@ import { AccountsService } from '../account/accounts.service';
 import { DataSource } from 'typeorm';
 import { Account } from '../../entities/account/account.entity';
 import { Transaction, TransactionStatus } from '../../entities/transfer/transaction.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('TransferService (unit)', () => {
   let transferService: TransferService;
@@ -36,7 +37,8 @@ describe('TransferService (unit)', () => {
         TransferService,
         { provide: AccountsService, useValue: mockAccountsService },
         { provide: DataSource, useValue: mockDataSource },
-        { provide: 'NotificationsService', useValue: { isConnected: jest.fn(), notifyTransfer: jest.fn() } },
+  // Provide NotificationsService by class token (as used in TransferService constructor)
+  { provide: NotificationsService, useValue: { isConnected: jest.fn(), notifyTransfer: jest.fn() } },
       ],
     }).compile();
 

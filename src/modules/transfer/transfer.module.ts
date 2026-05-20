@@ -4,10 +4,11 @@ import { TransferController } from './transfer.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../../entities/user/user.entity';
 import { AccountModule } from '../account/account.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { Transaction } from '../../entities/transfer/transaction.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Transaction]), AccountModule],
+  imports: [TypeOrmModule.forFeature([User, Transaction]), AccountModule, NotificationsModule],
   providers: [TransferService],
   controllers: [TransferController],
 })
