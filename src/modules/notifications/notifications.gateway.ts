@@ -14,8 +14,6 @@ import { ConnectedUsersService } from './connected-users.service';
   },
   namespace: '/notifications',
 })
-
-@UseGuards(WsJwtGuard)
 export class NotificationsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -64,20 +62,15 @@ export class NotificationsGateway
         }
       }
 
-      
-      this.connectedUsersService.registerConnection(
-        userId,
-        client.id,
-        email || 'unknown',
-      );
+    if (!token) {
+      this.logger.warn(`Conexión sin token. Socket: ${client.id}`);
+      client.emit('connection_error', { message: 'Auth token missing' });
+      client.disconnect(true);
+      return;
+    }
 
-      
-      client.emit('connection_established', {
-        message: 'Conexión establecida con éxito',
-        userId,
-        connectedAt: new Date(),
-        socketId: client.id,
-      });
+    const jwtSecret = this.configService.get<string>('JWT_SECRET');
+    const decoded = this.jwtService.verify(token, { secret: jwtSecret });
 
            
       this.logger.log(
@@ -92,6 +85,8 @@ export class NotificationsGateway
       );
       client.disconnect(true);
     }
+
+    return undefined;
   }
 
 
@@ -252,20 +247,24 @@ export class NotificationsGateway
   }
 
  
-  sendNotificationToUser(userId: number, eventName: string, data: any) {
-    const socketId = this.connectedUsersService.getSocketId(userId);
+   sendNotificationToUser(
+  userId: number,
+  eventName: string,
+  data: any,
+) {
+  const socketId =
+    this.connectedUsersService.getSocketId(userId);
 
-    if (socketId) {
-      this.server.to(socketId).emit(eventName, data);
-      this.logger.log(
-        `📨 Notificación '${eventName}' enviada al usuario ${userId}`,
-      );
-    } else {
-      this.logger.warn(
-        `⚠️ Usuario ${userId} no está conectado para recibir la notificación '${eventName}'`,
-      );
-    }
+    this.logger.debug('SEND WS EVENT: ' + JSON.stringify({ userId, socketId, eventName }));
+
+  if (socketId) {
+    this.server.to(socketId).emit(eventName, data);
+
+    this.logger.log(`EVENT SENT TO SOCKET: ${socketId}`);
+  } else {
+    this.logger.warn(`USER NOT CONNECTED: ${userId}`);
   }
+}
 
   
   isUserConnected(userId: number): boolean {
