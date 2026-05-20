@@ -9,7 +9,6 @@ import { UserModule } from './modules/user/user.module';
 import { AccountModule } from './modules/account/account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -23,7 +22,7 @@ import { TransactionModule } from './modules/transaction/transaction.module';
     TransferModule,
     UserModule,
     AccountModule,
-    TransactionModule
+    TransactionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

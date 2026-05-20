@@ -18,14 +18,21 @@ export class TransferController {
   async transfer(@Request() req: any, @Body() transferDto: TransferDto) {
     // req.user viene del jwt-auth.guard (jwt.strategy.ts validate() return)
     const fromId = req.user.id;
-    return this.transferService.transfer(fromId, transferDto.toAccountId, transferDto.amount);
+    return this.transferService.transfer(
+      fromId,
+      transferDto.toAccountId,
+      transferDto.amount,
+    );
   }
 
   // Depósito: SOLO ADMIN
   @Post('deposit')
   @Roles(Role.ADMIN)
   async deposit(@Body() depositDto: DepositDto) {
-    return this.transferService.deposit(depositDto.toAccountId, depositDto.amount);
+    return this.transferService.deposit(
+      depositDto.toAccountId,
+      depositDto.amount,
+    );
   }
 
   // Retiro: SOLO USUARIO (solo puede retirar de su propia cuenta)

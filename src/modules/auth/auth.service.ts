@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -54,15 +58,21 @@ export class AuthService {
       // No retornar el password_hash
       const { password_hash: _, ...userWithoutPassword } = savedUser;
 
-      const payload = { sub: savedUser.id, email: savedUser.email, role: savedUser.role };
-      
+      const payload = {
+        sub: savedUser.id,
+        email: savedUser.email,
+        role: savedUser.role,
+      };
+
       return {
         user: userWithoutPassword,
         access_token: await this.jwtService.signAsync(payload),
       };
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
-      throw new BadRequestException('Error al registrar usuario: ' + error.message);
+      throw new BadRequestException(
+        'Error al registrar usuario: ' + error.message,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -82,7 +92,7 @@ export class AuthService {
     }
 
     const payload = { sub: user.id, email: user.email, role: user.role };
-    
+
     return {
       access_token: await this.jwtService.signAsync(payload),
     };

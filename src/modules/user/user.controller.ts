@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from '../../dtos/user/create-user.dto';
 import { UpdateUserDto } from '../../dtos/user/update-user.dto';
@@ -38,7 +47,10 @@ export class UserController {
   @Patch(':id/role')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Asignar roles a un usuario (Solo ADMIN)' })
-  async updateRole(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+  async updateRole(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
     return this.userService.updateRole(+id, updateUserDto);
   }
 }

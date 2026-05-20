@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
+  JoinColumn,
+} from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Account } from '../account/account.entity';
 
@@ -37,7 +44,6 @@ export class Transaction {
   @ManyToOne(() => Account, { nullable: true })
   @JoinColumn({ name: 'to_account_id' })
   toAccount?: Account;
-
 
   @ApiProperty({ enum: TransactionStatus })
   @Column({ type: 'enum', enum: TransactionStatus, default: TransactionStatus.PENDING })
