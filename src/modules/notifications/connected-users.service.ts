@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-
 export interface ConnectedUser {
   userId: number;
   socketId: string;
@@ -8,113 +7,144 @@ export interface ConnectedUser {
   connectedAt: Date;
 }
 
-
 @Injectable()
 export class ConnectedUsersService {
   private readonly logger = new Logger(ConnectedUsersService.name);
-  private readonly connectedUsers = new Map<number, ConnectedUser>();  
-  private readonly socketToUserId = new Map<string, number>();
+  
+  // Maps userId to a Set of active socketIds
+  private readonly connectedUsers = new Map<number, Set<string>>();  
+  
+  // Maps socketId to connection information
+  private readonly socketToUserInfo = new Map<string, { userId: number; email: string; connectedAt: Date }>();
 
   registerConnection(
     userId: number,
     socketId: string,
     email: string,
   ): ConnectedUser {
-    
-    if (this.connectedUsers.has(userId)) {
-      this.logger.warn(
-        `Usuario ${userId} ya estaba conectado. Reemplazando conexión anterior.`,
-      );
-      const oldConnection = this.connectedUsers.get(userId);
-      if (oldConnection) {
-        this.socketToUserId.delete(oldConnection.socketId);
-      }
+    let socketSet = this.connectedUsers.get(userId);
+    if (!socketSet) {
+      socketSet = new Set<string>();
+      this.connectedUsers.set(userId, socketSet);
     }
+    socketSet.add(socketId);
 
-     const connectedUser: ConnectedUser = {
+    const connectedAt = new Date();
+    this.socketToUserInfo.set(socketId, {
+      userId,
+      email,
+      connectedAt,
+    });
+
+    this.logger.log(
+      `🔌 Usuario registrado (multi-device): ${email} (ID: ${userId}, Socket: ${socketId}, Total Sockets: ${socketSet.size})`,
+    );
+
+    return {
       userId,
       socketId,
       email,
-      connectedAt: new Date(),
+      connectedAt,
     };
-
-   
-    this.connectedUsers.set(userId, connectedUser);
-    this.socketToUserId.set(socketId, userId);
-
-    this.logger.log(
-      ` Usuario conectado: ${email} (ID: ${userId}, Socket: ${socketId})`,
-    );
-
-    return connectedUser;
   }
 
-  
   disconnectUser(userId: number): boolean {
-    const user = this.connectedUsers.get(userId);
-
-    if (!user) {
+    const socketSet = this.connectedUsers.get(userId);
+    if (!socketSet) {
       return false;
     }
 
-    
+    for (const socketId of socketSet) {
+      this.socketToUserInfo.delete(socketId);
+    }
     this.connectedUsers.delete(userId);
-    this.socketToUserId.delete(user.socketId);
 
-    this.logger.log(` Usuario desconectado: ID ${userId} (${user.email})`);
-
+    this.logger.log(`🔌 Usuario desconectado por ID: ${userId} (Limpiados todos sus sockets)`);
     return true;
   }
 
- 
   disconnectBySocket(socketId: string): boolean {
-    const userId = this.socketToUserId.get(socketId);
-
-    if (!userId) {
+    const userInfo = this.socketToUserInfo.get(socketId);
+    if (!userInfo) {
       return false;
     }
 
-    return this.disconnectUser(userId);
+    const { userId, email } = userInfo;
+    this.socketToUserInfo.delete(socketId);
+
+    const socketSet = this.connectedUsers.get(userId);
+    if (socketSet) {
+      socketSet.delete(socketId);
+      if (socketSet.size === 0) {
+        this.connectedUsers.delete(userId);
+      }
+    }
+
+    this.logger.log(
+      `🔌 Socket desconectado: ${socketId} del usuario ID: ${userId} (${email})`,
+    );
+    return true;
   }
 
- 
   isConnected(userId: number): boolean {
-    return this.connectedUsers.has(userId);
+    const socketSet = this.connectedUsers.get(userId);
+    return !!socketSet && socketSet.size > 0;
   }
 
-  
   getSocketId(userId: number): string | undefined {
-    return this.connectedUsers.get(userId)?.socketId;
+    const socketSet = this.connectedUsers.get(userId);
+    if (!socketSet || socketSet.size === 0) {
+      return undefined;
+    }
+    return Array.from(socketSet)[0];
   }
 
-  
+  getSocketIds(userId: number): string[] {
+    const socketSet = this.connectedUsers.get(userId);
+    return socketSet ? Array.from(socketSet) : [];
+  }
+
   getUserIdBySocket(socketId: string): number | undefined {
-    return this.socketToUserId.get(socketId);
+    return this.socketToUserInfo.get(socketId)?.userId;
   }
 
-  
   getConnectionInfo(userId: number): ConnectedUser | undefined {
-    return this.connectedUsers.get(userId);
+    const socketSet = this.connectedUsers.get(userId);
+    if (!socketSet || socketSet.size === 0) {
+      return undefined;
+    }
+    const firstSocketId = Array.from(socketSet)[0];
+    const info = this.socketToUserInfo.get(firstSocketId);
+    if (!info) return undefined;
+    return {
+      userId,
+      socketId: firstSocketId,
+      email: info.email,
+      connectedAt: info.connectedAt,
+    };
   }
 
- 
   getAllConnectedUsers(): ConnectedUser[] {
-    return Array.from(this.connectedUsers.values());
+    const list: ConnectedUser[] = [];
+    this.socketToUserInfo.forEach((info, socketId) => {
+      list.push({
+        userId: info.userId,
+        socketId,
+        email: info.email,
+        connectedAt: info.connectedAt,
+      });
+    });
+    return list;
   }
 
-  
   getTotalConnected(): number {
     return this.connectedUsers.size;
   }
 
-  
-  
   clearAllConnections(): void {
     this.connectedUsers.clear();
-    this.socketToUserId.clear();
-    this.logger.log(' Todas las conexiones han sido limpiadas');
+    this.socketToUserInfo.clear();
+    this.logger.log('🧹 Todas las conexiones han sido limpiadas');
   }
-
- 
-  
 }
+

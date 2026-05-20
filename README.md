@@ -25,11 +25,13 @@ Sistema de gestión de billetera digital que permite a los usuarios administrar 
 
 ```bash
 npm install
+```
 
 ## Ejecutar el proyecto
 
 ```bash
 npm run start:dev
+```
 
 ## Funcionalidades
 
@@ -37,5 +39,4 @@ npm run start:dev
 - Gestión de usuarios
 - Gestión de cuentas
 - Transacciones (depósito, retiro, transferencia)
-````
 

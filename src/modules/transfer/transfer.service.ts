@@ -1,17 +1,24 @@
-import { Injectable, BadRequestException, InternalServerErrorException, ForbiddenException, Inject } from '@nestjs/common';
+import { Injectable, BadRequestException, InternalServerErrorException, ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Account } from '../../entities/account/account.entity';
 import { AccountsService } from '../account/accounts.service';
 import { Transaction, TransactionType, TransactionStatus } from '../../entities/transfer/transaction.entity';
-import { NotificationsService } from '../notifications/notifications.service';
+import { OperationType } from '../../events/operation-type.enum';
+import { OperationStatus } from '../../events/operation-status.enum';
+import { BANK_OPERATION_EVENT, BankOperationEvent } from '../../events/bank-operation.event';
 
 @Injectable()
 export class TransferService {
   constructor(
     private dataSource: DataSource,
     private readonly accountsService: AccountsService,
-    private readonly notificationsService: NotificationsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  private emitBankOperationEvent(event: BankOperationEvent) {
+    this.eventEmitter.emit(BANK_OPERATION_EVENT, event);
+  }
 
   async transfer(fromId: number, toId: number, amount: number) {
     if (fromId === toId) {
@@ -24,32 +31,32 @@ export class TransferService {
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
-
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
-    try {
-      // Obtener las cuentas involucradas
-      const fromAccount = await this.accountsService.findAccountByUserId(fromId);
-      const toAccount = await this.accountsService.findAccountById(toId);
+    let fromAccount: Account | null = null;
+    let toAccount: Account | null = null;
+    let transactionId: number | undefined = undefined;
 
-      // Seguridad: asegurarnos que la cuenta origen pertenece al usuario que solicita
+    try {
+      fromAccount = await this.accountsService.findAccountByUserId(fromId);
+      toAccount = await this.accountsService.findAccountById(toId);
+
       if (!fromAccount.user || fromAccount.user.id !== fromId) {
         throw new ForbiddenException('No tiene permiso sobre la cuenta origen.');
       }
 
-      // Para evitar deadlocks, bloqueamos las cuentas en orden ascendente de ID
       const [firstId, secondId] = [fromAccount.id, toAccount.id].sort((a, b) => a - b);
 
-      // Bloqueo 1
       const acc1 = await queryRunner.manager.findOne(Account, {
         where: { id: firstId },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
-      // Bloqueo 2
       const acc2 = await queryRunner.manager.findOne(Account, {
         where: { id: secondId },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -57,66 +64,50 @@ export class TransferService {
         throw new BadRequestException('Una o ambas cuentas no existen.');
       }
 
-      // Asignar roles después de bloquear
       const sourceAcc = acc1.id === fromAccount.id ? acc1 : acc2;
       const destAcc = acc1.id === toAccount.id ? acc1 : acc2;
 
       const fromSaldo = Number(sourceAcc.saldo);
-
-      // Validar fondos suficientes
       if (fromSaldo < exactAmount) {
         throw new BadRequestException('Fondos insuficientes.');
       }
 
+      sourceAcc.saldo = Number((fromSaldo - exactAmount).toFixed(2));
+      destAcc.saldo = Number((Number(destAcc.saldo) + exactAmount).toFixed(2));
 
-  // Crear transacción en estado PENDING
-  const transaction = queryRunner.manager.create(Transaction, {
-    type: TransactionType.TRANSFER,
-    amount: exactAmount,
-    fromAccount: sourceAcc,
-    toAccount: destAcc,
-    status: TransactionStatus.PENDING,
-  });
-  await queryRunner.manager.save(Transaction, transaction);
+      await queryRunner.manager.save(Account, sourceAcc);
+      await queryRunner.manager.save(Account, destAcc);
 
-  // Actualizar saldos con precisión decimal
-  sourceAcc.saldo = Number((fromSaldo - exactAmount).toFixed(2));
-  destAcc.saldo = Number((Number(destAcc.saldo) + exactAmount).toFixed(2));
-
-  await queryRunner.manager.save(Account, sourceAcc);
-  await queryRunner.manager.save(Account, destAcc);
+      const transaction = queryRunner.manager.create(Transaction, {
+        type: TransactionType.TRANSFER,
+        amount: exactAmount,
+        fromAccount: sourceAcc,
+        toAccount: destAcc,
+        status: TransactionStatus.SUCCESS,
+      });
+      const savedTransaction = await queryRunner.manager.save(Transaction, transaction);
+      transactionId = savedTransaction.id;
 
       await queryRunner.commitTransaction();
 
-      // Marcar transacción como SUCCESS
-      try {
-        transaction.status = TransactionStatus.SUCCESS;
-        await queryRunner.manager.save(Transaction, transaction);
-      } catch {
-        // no impedir la respuesta si setear el status falla; el estado puede ser corregido por un job
-      }
-
-      // Notificar al emisor y receptor (solo si la sesión está activa)
-      try {
-        const fromUserId = sourceAcc.user?.id ?? (await this.accountsService.findAccountById(sourceAcc.id)).user.id;
-        const toUserId = destAcc.user?.id ?? (await this.accountsService.findAccountById(destAcc.id)).user.id;
-        const payload = {
-          transactionId: transaction.id,
-          type: TransactionType.TRANSFER,
-          amount: transaction.amount,
-          fromAccountId: sourceAcc.id,
-          toAccountId: destAcc.id,
-          status: transaction.status,
-          created_at: transaction.created_at,
-        };
-
-        this.notificationsService.notifyTransfer(fromUserId, payload as any);
-        this.notificationsService.notifyTransfer(toUserId, payload as any);
-        this.notifyBalanceUpdate(fromUserId, sourceAcc);
-        this.notifyBalanceUpdate(toUserId, destAcc);
-      } catch {
-        // no bloquear por errores en notificaciones
-      }
+      this.emitBankOperationEvent({
+        userId: fromId,
+        operationType: OperationType.TRANSFER,
+        operationStatus: OperationStatus.SUCCESS,
+        amount: exactAmount,
+        fromAccountId: sourceAcc.id,
+        toAccountId: destAcc.id,
+        transactionId,
+        initiatedById: fromId,
+        senderEmail: fromAccount.user?.email,
+        receiverEmail: toAccount.user?.email,
+        senderBalance: sourceAcc.saldo,
+        receiverBalance: destAcc.saldo,
+        toUserId: toAccount.user?.id,
+        message: `Transferencia exitosa de ${exactAmount} de la cuenta ${sourceAcc.id} a la cuenta ${destAcc.id}`,
+        occurredAt: new Date().toISOString(),
+        details: { sourceAccountId: sourceAcc.id, targetAccountId: destAcc.id },
+      });
 
       return {
         message: 'Transferencia exitosa',
@@ -127,28 +118,35 @@ export class TransferService {
       };
     } catch (err: any) {
       await queryRunner.rollbackTransaction();
-      // Intentar marcar la transacción como FAILED si existe
-      try {
-        const maybeTx = await queryRunner.manager.findOne(Transaction, { where: { fromAccount: { id: fromId } } });
-        if (maybeTx) {
-          maybeTx.status = TransactionStatus.FAILED;
-          await queryRunner.manager.save(Transaction, maybeTx);
-        }
-      } catch {
-        // ignore
+
+      if (fromAccount) {
+        this.emitBankOperationEvent({
+          userId: fromId,
+          operationType: OperationType.TRANSFER,
+          operationStatus: OperationStatus.FAILED,
+          amount: exactAmount,
+          fromAccountId: fromAccount.id,
+          toAccountId: toAccount?.id,
+          transactionId,
+          initiatedById: fromId,
+          senderEmail: fromAccount.user?.email,
+          receiverEmail: toAccount?.user?.email,
+          toUserId: toAccount?.user?.id,
+          message: `Transferencia fallida: ${err.message}`,
+          occurredAt: new Date().toISOString(),
+          details: { reason: err.message },
+        });
       }
 
       if (err instanceof BadRequestException || err instanceof ForbiddenException) {
         throw err;
       }
-      // No exponer detalles técnicos al usuario
       throw new InternalServerErrorException('Error interno al procesar la transferencia.');
     } finally {
       await queryRunner.release();
     }
   }
 
-  // Depósito: solo ADMIN (controlado en el controller via @Roles)
   async deposit(toAccountId: number, amount: number) {
     const exactAmount = Number(amount);
     if (isNaN(exactAmount) || exactAmount <= 0) {
@@ -159,9 +157,12 @@ export class TransferService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let account: Account | null = null;
+
     try {
-      const account = await queryRunner.manager.findOne(Account, {
+      account = await queryRunner.manager.findOne(Account, {
         where: { id: toAccountId },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -174,48 +175,33 @@ export class TransferService {
 
       await queryRunner.manager.save(Account, account);
 
-      // crear transacción PENDING
       const transaction = queryRunner.manager.create(Transaction, {
         type: TransactionType.DEPOSIT,
         amount: exactAmount,
         toAccount: account,
-        status: TransactionStatus.PENDING,
+        status: TransactionStatus.SUCCESS,
       });
-      await queryRunner.manager.save(Transaction, transaction);
+      const savedTransaction = await queryRunner.manager.save(Transaction, transaction);
 
       await queryRunner.commitTransaction();
 
-      // marcar SUCCESS
-      try {
-        transaction.status = TransactionStatus.SUCCESS;
-        await queryRunner.manager.save(Transaction, transaction);
-      } catch {
-        // ignored
-      }
-
-      // Notificar propietario si está conectado
-      try {
-        const userId = account.user?.id ?? (await this.accountsService.findAccountById(account.id)).user.id;
-        const payload = {
-          transactionId: transaction.id,
-          type: TransactionType.DEPOSIT,
-          amount: exactAmount,
-          toAccountId: account.id,
-          status: transaction.status,
-          created_at: transaction.created_at,
-        };
-        if (this.notificationsService.isConnected(userId)) {
-          this.notificationsService.notifyTransfer(userId, payload as any);
-        }
-        this.notificationsService.sendCustomNotification(userId, 'balance.updated', {
-          accountId: account.id,
-          saldo: newBalance,
-          type: TransactionType.DEPOSIT,
-          updatedAt: transaction.created_at,
-        });
-      } catch {
-        // ignore
-      }
+      this.emitBankOperationEvent({
+        userId: account.user.id,
+        operationType: OperationType.DEPOSIT,
+        operationStatus: OperationStatus.SUCCESS,
+        amount: exactAmount,
+        toAccountId: account.id,
+        transactionId: savedTransaction.id,
+        initiatedById: account.user.id,
+        senderEmail: account.user.email,
+        receiverEmail: account.user.email,
+        senderBalance: account.saldo,
+        receiverBalance: account.saldo,
+        toUserId: account.user.id,
+        message: `Depósito exitoso de ${exactAmount} en la cuenta ${account.id}`,
+        occurredAt: new Date().toISOString(),
+        details: { targetAccountId: account.id, targetUserId: account.user.id },
+      });
 
       return {
         message: 'Depósito exitoso',
@@ -224,6 +210,23 @@ export class TransferService {
       };
     } catch (err: any) {
       await queryRunner.rollbackTransaction();
+
+      if (account) {
+        this.emitBankOperationEvent({
+          userId: account.user.id,
+          operationType: OperationType.DEPOSIT,
+          operationStatus: OperationStatus.FAILED,
+          amount: exactAmount,
+          toAccountId: account.id,
+          senderEmail: account.user.email,
+          receiverEmail: account.user.email,
+          toUserId: account.user.id,
+          message: `Depósito fallido: ${err.message}`,
+          occurredAt: new Date().toISOString(),
+          details: { reason: err.message },
+        });
+      }
+
       if (err instanceof BadRequestException) {
         throw err;
       }
@@ -233,7 +236,6 @@ export class TransferService {
     }
   }
 
-  // Retiro: role USER (controlado en el controller via @Roles)
   async withdraw(userId: number, amount: number) {
     const exactAmount = Number(amount);
     if (isNaN(exactAmount) || exactAmount <= 0) {
@@ -244,12 +246,14 @@ export class TransferService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let account: Account | null = null;
+
     try {
-      // Obtenemos la cuenta base desde userId para tener el id
       const userAccount = await this.accountsService.findAccountByUserId(userId);
-      
-      const account = await queryRunner.manager.findOne(Account, {
+
+      account = await queryRunner.manager.findOne(Account, {
         where: { id: userAccount.id },
+        relations: ['user'],
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -271,43 +275,29 @@ export class TransferService {
         type: TransactionType.WITHDRAW,
         amount: exactAmount,
         fromAccount: account,
-        status: TransactionStatus.PENDING,
+        status: TransactionStatus.SUCCESS,
       });
-      await queryRunner.manager.save(Transaction, transaction);
+      const savedTransaction = await queryRunner.manager.save(Transaction, transaction);
 
       await queryRunner.commitTransaction();
 
-      // marcar SUCCESS
-      try {
-        transaction.status = TransactionStatus.SUCCESS;
-        await queryRunner.manager.save(Transaction, transaction);
-      } catch {
-        // ignored
-      }
-
-      // Notificar propietario si está conectado
-      try {
-        const userId = account.user?.id ?? (await this.accountsService.findAccountById(account.id)).user.id;
-        const payload = {
-          transactionId: transaction.id,
-          type: TransactionType.WITHDRAW,
-          amount: exactAmount,
-          fromAccountId: account.id,
-          status: transaction.status,
-          created_at: transaction.created_at,
-        };
-        if (this.notificationsService.isConnected(userId)) {
-          this.notificationsService.notifyTransfer(userId, payload as any);
-        }
-        this.notificationsService.sendCustomNotification(userId, 'balance.updated', {
-          accountId: account.id,
-          saldo: newBalance,
-          type: TransactionType.WITHDRAW,
-          updatedAt: transaction.created_at,
-        });
-      } catch {
-        // ignore
-      }
+      this.emitBankOperationEvent({
+        userId,
+        operationType: OperationType.WITHDRAW,
+        operationStatus: OperationStatus.SUCCESS,
+        amount: exactAmount,
+        fromAccountId: account.id,
+        transactionId: savedTransaction.id,
+        initiatedById: userId,
+        senderEmail: account.user.email,
+        receiverEmail: account.user.email,
+        senderBalance: account.saldo,
+        receiverBalance: account.saldo,
+        toUserId: userId,
+        message: `Retiro exitoso de ${exactAmount} de la cuenta ${account.id}`,
+        occurredAt: new Date().toISOString(),
+        details: { sourceAccountId: account.id },
+      });
 
       return {
         message: 'Retiro exitoso',
@@ -316,6 +306,17 @@ export class TransferService {
       };
     } catch (err: any) {
       await queryRunner.rollbackTransaction();
+      this.emitBankOperationEvent({
+        userId,
+        operationType: OperationType.WITHDRAW,
+        operationStatus: OperationStatus.FAILED,
+        amount: exactAmount,
+        fromAccountId: account?.id,
+        message: `Retiro fallido: ${err.message}`,
+        occurredAt: new Date().toISOString(),
+        details: { reason: err.message },
+      });
+
       if (err instanceof BadRequestException) {
         throw err;
       }
@@ -323,13 +324,5 @@ export class TransferService {
     } finally {
       await queryRunner.release();
     }
-  }
-
-  private notifyBalanceUpdate(userId: number, account: Account) {
-    this.notificationsService.sendCustomNotification(userId, 'balance.updated', {
-      accountId: account.id,
-      saldo: Number(account.saldo),
-      updatedAt: new Date(),
-    });
   }
 }
