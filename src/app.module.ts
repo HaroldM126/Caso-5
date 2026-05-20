@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -23,6 +24,7 @@ import { TransactionModule } from './modules/transaction/transaction.module';
     UserModule,
     AccountModule,
     TransactionModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
