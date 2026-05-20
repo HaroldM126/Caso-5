@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Notificación de Transacción - PayFlow</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background-color: #f4f6f8;
+      color: #333333;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #eaeaea;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+    .header h2 {
+      color: #10b981;
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .content {
+      line-height: 1.6;
+    }
+    .transaction-details {
+      background-color: #f9fafb;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      border: 1px solid #f3f4f6;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #f3f4f6;
+      padding-bottom: 8px;
+    }
+    .detail-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+    .label {
+      font-weight: 600;
+      color: #6b7280;
+    }
+    .value {
+      font-weight: 700;
+      color: #111827;
+    }
+    .footer {
+      margin-top: 40px;
+      border-top: 1px solid #eaeaea;
+      padding-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Notificación de Transacción</h2>
+    </div>
+    <div class="content">
+      <p>Hola,</p>
+      <p>Te informamos que se ha registrado un movimiento en tu cuenta de PayFlow:</p>
+      
+      <div class="transaction-details">
+        <div class="detail-row">
+          <span class="label">ID de Transacción:</span>
+          <span class="value">#{{transactionId}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Tipo de Movimiento:</span>
+          <span class="value">{{type}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Monto:</span>
+          <span class="value">${{amount}} USD</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Estado:</span>
+          <span class="value">{{status}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Fecha y Hora:</span>
+          <span class="value">{{timestamp}}</span>
+        </div>
+      </div>
+
+      <p>Si no reconoces este movimiento, por favor ponte en contacto con nuestro equipo de soporte de inmediato.</p>
+    </div>
+    <div class="footer">
+      <p>Este es un correo automático. Por favor no respondas a este mensaje.</p>
+      <p>&copy; 2026 PayFlow Inc. Todos los derechos reservados.</p>
+    </div>
+  </div>
+</body>
+</html>
