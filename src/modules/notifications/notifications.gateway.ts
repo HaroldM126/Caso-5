@@ -1,6 +1,8 @@
 import {WebSocketGateway,WebSocketServer,OnGatewayConnection,OnGatewayDisconnect,SubscribeMessage,} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards, Inject } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { WsJwtGuard } from './ws-jwt.guard';
 import { ConnectedUsersService } from './connected-users.service';
 
@@ -25,21 +27,41 @@ export class NotificationsGateway
   constructor(
     @Inject(ConnectedUsersService)
     private readonly connectedUsersService: ConnectedUsersService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
 
-
-  handleConnection(client: Socket) {
+ handleConnection(client: Socket) {
     try {
-      // Extraer datos del usuario validado por WsJwtGuard
-      const userId = client.data.userId;
-      const email = client.data.email;
+      
+      let userId = client.data?.userId;
+      let email = client.data?.email;
 
-      if (!userId) {
-        this.logger.warn(
-          ` Conexión sin userId detectada. Socket: ${client.id}`,
-        );
-        client.disconnect(true);
-        return;
+      if (!userId) {        
+        const token =
+          client.handshake.auth?.token ||
+          client.handshake.query?.token ||
+          (client.handshake.headers && client.handshake.headers.authorization
+            ? (client.handshake.headers.authorization as string).split(' ')[1]
+            : undefined);
+
+        if (!token) {
+          this.logger.warn(`Conexión sin userId ni token. Socket: ${client.id}`);
+          client.disconnect(true);
+          return;
+        }
+
+        try {
+          const secret = this.configService.get<string>('JWT_SECRET');
+          const decoded = this.jwtService.verify(token, { secret });
+          client.data.user = decoded;
+          userId = decoded.sub;
+          email = decoded.email;
+        } catch (err) {
+          this.logger.warn(`Token inválido en handshake (Socket: ${client.id})`);
+          client.disconnect(true);
+          return;
+        }
       }
 
       
@@ -59,7 +81,7 @@ export class NotificationsGateway
 
            
       this.logger.log(
-        `🔌 Conexión exitosa - Usuario: ${email} (ID: ${userId}), Socket: ${client.id}`,
+        ` Conexión exitosa - Usuario: ${email} (ID: ${userId}), Socket: ${client.id}`,
       );
     } catch (error) {
       const errorMessage =
@@ -71,6 +93,8 @@ export class NotificationsGateway
       client.disconnect(true);
     }
   }
+
+
 
   
   handleDisconnect(client: Socket) {
