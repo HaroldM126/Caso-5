@@ -49,9 +49,8 @@ canActivate(context: ExecutionContext): boolean {
     this.logger.debug('JWT DECODED: ' + JSON.stringify(decoded));
 
     client.data.user = decoded;
-    client.data.userId = decoded.sub;
-    client.data.email =
-      decoded.email;
+    client.data.userId = decoded.id;
+    client.data.email = decoded.email;
 
     this.logger.debug('USER ID: ' + client.data.userId);
 
@@ -80,4 +79,3 @@ canActivate(context: ExecutionContext): boolean {
     return undefined;
   }
 }
-
