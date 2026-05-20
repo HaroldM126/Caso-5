@@ -110,12 +110,10 @@ export class TransferService {
           created_at: transaction.created_at,
         };
 
-        if (this.notificationsService.isConnected(fromUserId)) {
-          this.notificationsService.notifyTransfer(fromUserId, payload as any);
-        }
-        if (this.notificationsService.isConnected(toUserId)) {
-          this.notificationsService.notifyTransfer(toUserId, payload as any);
-        }
+        this.notificationsService.notifyTransfer(fromUserId, payload as any);
+        this.notificationsService.notifyTransfer(toUserId, payload as any);
+        this.notifyBalanceUpdate(fromUserId, sourceAcc);
+        this.notifyBalanceUpdate(toUserId, destAcc);
       } catch {
         // no bloquear por errores en notificaciones
       }
@@ -209,6 +207,12 @@ export class TransferService {
         if (this.notificationsService.isConnected(userId)) {
           this.notificationsService.notifyTransfer(userId, payload as any);
         }
+        this.notificationsService.sendCustomNotification(userId, 'balance.updated', {
+          accountId: account.id,
+          saldo: newBalance,
+          type: TransactionType.DEPOSIT,
+          updatedAt: transaction.created_at,
+        });
       } catch {
         // ignore
       }
@@ -295,6 +299,12 @@ export class TransferService {
         if (this.notificationsService.isConnected(userId)) {
           this.notificationsService.notifyTransfer(userId, payload as any);
         }
+        this.notificationsService.sendCustomNotification(userId, 'balance.updated', {
+          accountId: account.id,
+          saldo: newBalance,
+          type: TransactionType.WITHDRAW,
+          updatedAt: transaction.created_at,
+        });
       } catch {
         // ignore
       }
@@ -313,5 +323,13 @@ export class TransferService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  private notifyBalanceUpdate(userId: number, account: Account) {
+    this.notificationsService.sendCustomNotification(userId, 'balance.updated', {
+      accountId: account.id,
+      saldo: Number(account.saldo),
+      updatedAt: new Date(),
+    });
   }
 }

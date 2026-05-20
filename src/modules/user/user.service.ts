@@ -33,11 +33,13 @@ export class UserService {
       password_hash,
     });
 
-    return await this.userRepository.save(newUser);
+    const saved = await this.userRepository.save(newUser);
+    return this.sanitize(saved) as any;
   }
 
   async findAll(): Promise<User[]> {
-    return await this.userRepository.find();
+    const users = await this.userRepository.find();
+    return users.map((u) => this.sanitize(u) as any);
   }
 
   async findOne(id: number): Promise<User> {
@@ -56,10 +58,17 @@ export class UserService {
     if (updateUserDto.nombre) {
       user.nombre = updateUserDto.nombre;
     }
-    return await this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    return this.sanitize(saved) as any;
   }
 
   async getProfile(user: User): Promise<User> {
-    return await this.findOne(user.id);
+    const u = await this.findOne(user.id);
+    return this.sanitize(u) as any;
+  }
+
+  private sanitize(user: User) {
+    const { password_hash, ...rest } = user as any;
+    return rest as Partial<User>;
   }
 }

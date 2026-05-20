@@ -14,50 +14,55 @@ export class WsJwtGuard implements CanActivate {
   ) {}
 
   
-  canActivate(context: ExecutionContext): boolean {
-    const client: Socket = context.switchToWs().getClient();
+canActivate(context: ExecutionContext): boolean {
+  const client: Socket =
+    context.switchToWs().getClient();
 
-    try {
-      
-      const token =
-        this.extractTokenFromSocket(client) ||
-        client.handshake.auth.token ||
-        client.handshake.query.token;
+  try {
+    this.logger.debug('HANDSHAKE AUTH');
+    this.logger.debug('handshake.auth: ' + JSON.stringify(client.handshake.auth));
 
-      if (!token) {
-        this.logger.warn(
-          ` Conexión rechazada - No se proporcionó token JWT (Socket: ${client.id})`,
-        );
-        client.disconnect(true);
-        return false;
-      }
+    const token =
+      client.handshake.auth?.token ||
+      client.handshake.query?.token ||
+      this.extractTokenFromSocket(client);
 
-      // Validar y decodificar el JWT
-      const jwtSecret = this.configService.get<string>('JWT_SECRET');
-      const decoded = this.jwtService.verify(token, { secret: jwtSecret });
+    this.logger.debug('TOKEN RECIBIDO: ' + token);
 
-      
-      client.data.user = decoded;
-      client.data.userId = decoded.sub;
-      client.data.email = decoded.email;
+    if (!token) {
+      this.logger.warn('SIN TOKEN');
 
-      this.logger.log(
-        ` JWT validado correctamente para usuario ID: ${decoded.sub}`,
-      );
-      return true;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Error desconocido';
-
-      this.logger.warn(
-        ` Validación JWT fallida (Socket: ${client.id}) - ${errorMessage}`,
-      );
-
-      
       client.disconnect(true);
       return false;
     }
+
+    const jwtSecret =
+      this.configService.get<string>(
+        'JWT_SECRET',
+      );
+
+    const decoded =
+      this.jwtService.verify(token, {
+        secret: jwtSecret,
+      });
+
+    this.logger.debug('JWT DECODED: ' + JSON.stringify(decoded));
+
+    client.data.user = decoded;
+    client.data.userId = decoded.sub;
+    client.data.email =
+      decoded.email;
+
+    this.logger.debug('USER ID: ' + client.data.userId);
+
+    return true;
+  } catch (error) {
+    this.logger.error('JWT ERROR: ' + (error instanceof Error ? error.message : String(error)));
+
+    client.disconnect(true);
+    return false;
   }
+}
 
   
   private extractTokenFromSocket(client: Socket): string | undefined {
@@ -75,3 +80,4 @@ export class WsJwtGuard implements CanActivate {
     return undefined;
   }
 }
+
