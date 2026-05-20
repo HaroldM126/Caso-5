@@ -103,8 +103,5 @@ export class AccountsService {
     return this.toBalanceDto(account);
   }
 
-  async updateSaldo(accountId: number, newBalance: number): Promise<void> {
-    await this.findAccountById(accountId); // valida que existe
-    await this.accountRepository.update(accountId, { saldo: newBalance });
-  }
+
 }
