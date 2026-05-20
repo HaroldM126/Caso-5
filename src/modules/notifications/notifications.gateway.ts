@@ -3,7 +3,6 @@ import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards, Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { WsJwtGuard } from './ws-jwt.guard';
 import { ConnectedUsersService } from './connected-users.service';
 
 
@@ -62,19 +61,20 @@ export class NotificationsGateway
         }
       }
 
-    if (!token) {
-      this.logger.warn(`Conexión sin token. Socket: ${client.id}`);
-      client.emit('connection_error', { message: 'Auth token missing' });
-      client.disconnect(true);
-      return;
-    }
+      if (!userId) {
+        this.logger.warn(`Conexión sin userId tras verificación. Socket: ${client.id}`);
+        client.disconnect(true);
+        return;
+      }
 
-    const jwtSecret = this.configService.get<string>('JWT_SECRET');
-    const decoded = this.jwtService.verify(token, { secret: jwtSecret });
+      this.connectedUsersService.registerConnection(
+        userId,
+        client.id,
+        email || 'unknown',
+      );
 
-           
       this.logger.log(
-        ` Conexión exitosa - Usuario: ${email} (ID: ${userId}), Socket: ${client.id}`,
+        `Conexión exitosa - Usuario: ${email} (ID: ${userId}), Socket: ${client.id}`,
       );
     } catch (error) {
       const errorMessage =
