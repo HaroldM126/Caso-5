@@ -1,12 +1,12 @@
-import { Injectable, BadRequestException, InternalServerErrorException, ForbiddenException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DataSource } from 'typeorm';
 import { Account } from '../../entities/account/account.entity';
-import { AccountsService } from '../account/accounts.service';
-import { Transaction, TransactionType, TransactionStatus } from '../../entities/transfer/transaction.entity';
-import { OperationType } from '../../events/operation-type.enum';
-import { OperationStatus } from '../../events/operation-status.enum';
+import { Transaction, TransactionStatus, TransactionType } from '../../entities/transfer/transaction.entity';
 import { BANK_OPERATION_EVENT, BankOperationEvent } from '../../events/bank-operation.event';
+import { OperationStatus } from '../../events/operation-status.enum';
+import { OperationType } from '../../events/operation-type.enum';
+import { AccountsService } from '../account/accounts.service';
 
 @Injectable()
 export class TransferService {
@@ -83,12 +83,19 @@ export class TransferService {
         amount: exactAmount,
         fromAccount: sourceAcc,
         toAccount: destAcc,
-        status: TransactionStatus.SUCCESS,
+        status: TransactionStatus.PENDING,
       });
-      const savedTransaction = await queryRunner.manager.save(Transaction, transaction);
-      transactionId = savedTransaction.id;
+      await queryRunner.manager.save(Transaction, transaction);
+      transactionId = transaction.id;
 
       await queryRunner.commitTransaction();
+
+      try {
+        transaction.status = TransactionStatus.SUCCESS;
+        await queryRunner.manager.save(Transaction, transaction);
+      } catch {
+        // No bloquear la respuesta si fallara el update de estado.
+      }
 
       this.emitBankOperationEvent({
         userId: fromId,
@@ -179,11 +186,18 @@ export class TransferService {
         type: TransactionType.DEPOSIT,
         amount: exactAmount,
         toAccount: account,
-        status: TransactionStatus.SUCCESS,
+        status: TransactionStatus.PENDING,
       });
-      const savedTransaction = await queryRunner.manager.save(Transaction, transaction);
+      await queryRunner.manager.save(Transaction, transaction);
 
       await queryRunner.commitTransaction();
+
+      try {
+        transaction.status = TransactionStatus.SUCCESS;
+        await queryRunner.manager.save(Transaction, transaction);
+      } catch {
+        // No bloquear la respuesta si fallara el update de estado.
+      }
 
       this.emitBankOperationEvent({
         userId: account.user.id,
@@ -191,7 +205,7 @@ export class TransferService {
         operationStatus: OperationStatus.SUCCESS,
         amount: exactAmount,
         toAccountId: account.id,
-        transactionId: savedTransaction.id,
+        transactionId: transaction.id,
         initiatedById: account.user.id,
         senderEmail: account.user.email,
         receiverEmail: account.user.email,
@@ -275,11 +289,18 @@ export class TransferService {
         type: TransactionType.WITHDRAW,
         amount: exactAmount,
         fromAccount: account,
-        status: TransactionStatus.SUCCESS,
+        status: TransactionStatus.PENDING,
       });
-      const savedTransaction = await queryRunner.manager.save(Transaction, transaction);
+      await queryRunner.manager.save(Transaction, transaction);
 
       await queryRunner.commitTransaction();
+
+      try {
+        transaction.status = TransactionStatus.SUCCESS;
+        await queryRunner.manager.save(Transaction, transaction);
+      } catch {
+        // No bloquear la respuesta si fallara el update de estado.
+      }
 
       this.emitBankOperationEvent({
         userId,
@@ -287,7 +308,7 @@ export class TransferService {
         operationStatus: OperationStatus.SUCCESS,
         amount: exactAmount,
         fromAccountId: account.id,
-        transactionId: savedTransaction.id,
+        transactionId: transaction.id,
         initiatedById: userId,
         senderEmail: account.user.email,
         receiverEmail: account.user.email,

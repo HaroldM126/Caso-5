@@ -1,10 +1,11 @@
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { TransferService } from './transfer.service';
-import { AccountsService } from '../account/accounts.service';
 import { DataSource } from 'typeorm';
 import { Account } from '../../entities/account/account.entity';
 import { Transaction, TransactionStatus } from '../../entities/transfer/transaction.entity';
+import { AccountsService } from '../account/accounts.service';
+import { TransferService } from './transfer.service';
 
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -39,17 +40,24 @@ describe('TransferService (unit)', () => {
 
   const mockDataSource = jest.mocked(rawMockDataSource, { shallow: true }) as unknown as jest.Mocked<DataSource>;
 
+  let moduleRef: TestingModule;
+
   beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
+    moduleRef = await Test.createTestingModule({
       providers: [
         TransferService,
         { provide: AccountsService, useValue: mockAccountsService },
         { provide: DataSource, useValue: mockDataSource },
         { provide: NotificationsService, useValue: { isConnected: jest.fn(), notifyTransfer: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
     transferService = moduleRef.get(TransferService);
+  });
+
+  afterEach(async () => {
+    await moduleRef.close();
   });
 
   it('should perform a transfer and mark transaction PENDING then SUCCESS', async () => {
